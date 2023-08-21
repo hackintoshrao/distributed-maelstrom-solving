@@ -1,4 +1,4 @@
-use anyhow::{Context, Ok, Result};
+use anyhow::{Context, Ok, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::io::{stdin, stdout, StdoutLock};
 
@@ -48,6 +48,22 @@ impl EchoNode {
         output: &mut serde_json::Serializer<StdoutLock>,
     ) -> anyhow::Result<()> {
         match input.body.payload {
+            Payload::InitOk { .. } => { bail!("Received InitOk message")},
+            Payload::Init { .. } => {
+                let reply = Message {
+                    src: input.dst,
+                    dst: input.src,
+                    body: Body {
+                        id: input.body.id,
+                        in_reply_to: input.body.id,
+                        payload: Payload::InitOk,
+                    },
+                };
+                reply
+                    .serialize(output)
+                    .context("serialized response to init")?;
+                self.id += 1;
+            },
             Payload::Echo { echo } => {
                 let reply = Message {
                     src: input.dst,
