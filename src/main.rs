@@ -1,6 +1,7 @@
 use anyhow::{Context, Ok, Result, bail};
 use serde::{Deserialize, Serialize};
-use std::io::{stdin, stdout, StdoutLock};
+use std::io::{stdin, stdout, StdoutLock, Write};
+
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Message {
@@ -45,7 +46,7 @@ impl EchoNode {
     pub fn step(
         &mut self,
         input: Message,
-        output: &mut serde_json::Serializer<StdoutLock>,
+        output: &mut StdoutLock,
     ) -> anyhow::Result<()> {
         match input.body.payload {
             Payload::InitOk { .. } => { bail!("Received InitOk message")},
@@ -59,9 +60,10 @@ impl EchoNode {
                         payload: Payload::InitOk,
                     },
                 };
-                reply
-                    .serialize(output)
+                serde_json::to_writer(&mut *output, &reply)
                     .context("serialized response to init")?;
+                
+                output.write_all(b"\n").context("wrote newline")?;
                 self.id += 1;
             },
             Payload::Echo { echo } => {
@@ -74,9 +76,10 @@ impl EchoNode {
                         payload: Payload::EchoOk { echo },
                     },
                 };
-                reply
-                    .serialize(output)
+                serde_json::to_writer(&mut *output, &reply)
                     .context("serialized response to echo")?;
+                output.write_all(b"\n").context("wrote newline")?;
+            
                 self.id += 1;
             }
             Payload::EchoOk { echo } => {
@@ -91,15 +94,14 @@ fn main() -> Result<()> {
     let stdin = stdin().lock();
     let mut inputs = serde_json::Deserializer::from_reader(stdin).into_iter::<Message>();
 
-    let stdout = stdout().lock();
-    let mut output = serde_json::Serializer::new(stdout);
+    let mut stdout = stdout().lock();
 
     let mut state = EchoNode { id: 0 };
 
     for input in inputs {
         let input = input.context("Failed to read input")?;
         state
-            .step(input, &mut output)
+            .step(input, &mut stdout)
             .context("Failed to process input")?;
     }
 
